@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dispatch Route Cost Map</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --bg:#101418; --panel:#1a2129; --panel2:#212a34; --line:#2e3947;
+    --text:#e8edf2; --muted:#93a1b0; --accent:#4da3ff; --green:#3ecf8e; --amber:#ffb454; --red:#ff6b6b;
+  }
+  [data-theme="light"]{
+    --bg:#f4f6f8; --panel:#ffffff; --panel2:#eef1f5; --line:#d7dde4;
+    --text:#1c242e; --muted:#5c6b7a; --accent:#0b6bd6; --green:#0e9f6e; --amber:#c77800; --red:#d64545;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+  header{padding:8px 16px;background:var(--panel);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  header h1{font-size:16px;font-weight:600;white-space:nowrap}
+  header .sub{font-size:11.5px;color:var(--muted)}
+  #themeBtn{margin-left:auto;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:20px;padding:6px 14px;font-size:13px;cursor:pointer}
+  #app{flex:1;display:flex;min-height:0}
+  #sidebar{width:340px;min-width:300px;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column}
+  #pickers{padding:10px 12px;border-bottom:1px solid var(--line)}
+  .prow{display:flex;gap:6px;margin-bottom:6px;align-items:center}
+  .prow label{font-size:11px;color:var(--muted);width:44px;text-transform:uppercase;letter-spacing:.04em}
+  .prow select{flex:1;background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:6px;font-size:13px;min-width:0}
+  #tabs{display:flex;border-bottom:1px solid var(--line)}
+  #tabs button{flex:1;background:none;border:none;color:var(--muted);padding:9px;font-size:13px;cursor:pointer;border-bottom:2px solid transparent}
+  #tabs button.active{color:var(--text);border-bottom-color:var(--accent)}
+  #laneList{overflow-y:auto;flex:1;padding:8px}
+  .lane{padding:9px 12px;border-radius:8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px solid transparent}
+  .lane:hover{background:var(--panel2)}
+  .lane.selected{background:var(--panel2);border-color:var(--accent)}
+  .lane .name{font-size:13.5px;font-weight:600}
+  .lane .meta{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .lane .price{font-size:13.5px;font-weight:700;text-align:right;white-space:nowrap}
+  .lane .price.free{color:var(--green)}
+  .lane .price.toll{color:var(--amber)}
+  .badge{display:inline-block;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:8px;background:var(--panel2);border:1px solid var(--line);color:var(--accent);vertical-align:middle;margin-left:5px}
+  .cmp{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px}
+  .cmp th{text-align:left;color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;padding:3px 0;border-bottom:1px solid var(--line)}
+  .cmp td{padding:4px 6px 4px 0;border-bottom:1px solid var(--line)}
+  .cmp td.win{color:var(--green);font-weight:700}
+  #settings{display:none;padding:14px;overflow-y:auto;flex:1}
+  #settings h3{font-size:13px;margin:12px 0 6px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+  #settings h3:first-child{margin-top:0}
+  .setrow{display:flex;justify-content:space-between;align-items:center;margin:6px 0;font-size:13px}
+  .setrow input{width:90px;background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;font-size:13px;text-align:right}
+  .note{font-size:11.5px;color:var(--muted);line-height:1.45;margin-top:10px}
+  #detail{border-top:1px solid var(--line);background:var(--panel2);padding:13px;max-height:46%;overflow-y:auto;display:none}
+  #detail h2{font-size:15px;margin-bottom:2px}
+  #detail .dmeta{font-size:12px;color:var(--muted);margin-bottom:10px}
+  .grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px}
+  .tile{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+  .tile .v{font-size:16px;font-weight:700}
+  .tile .l{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:2px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  td{padding:4px 0;border-bottom:1px solid var(--line)}
+  td:last-child{text-align:right}
+  tr.total td{font-weight:700;border-bottom:none;padding-top:7px}
+  #map{flex:1;min-width:0}
+  .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--panel);color:var(--text)}
+  .leaflet-popup-content{font-size:13px;line-height:1.5}
+  .pop-title{font-weight:700;font-size:14px}
+  .pop-price{font-size:18px;font-weight:800;color:var(--amber)}
+  .pop-price.free{color:var(--green)}
+  .citylabel{background:none;border:none;box-shadow:none;font-size:10px;color:var(--muted);font-weight:600}
+  @media(max-width:760px){#sidebar{width:260px;min-width:230px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>🚛 Dispatch Route Cost Map</h1>
+  <span class="sub">Any city to any city • routed over real interstate corridors • tolls from verified 5-axle facility rates (2026 transponder)</span>
+  <button id="themeBtn" onclick="toggleTheme()">☀️ Light</button>
+</header>
+<div id="app">
+  <div id="sidebar">
+    <div id="pickers">
+      <div class="prow"><label>From</label>
+        <select id="oState" onchange="fillCities('o')"></select>
+        <select id="oCity" onchange="originChanged()"></select>
+      </div>
+      <div class="prow"><label>To</label>
+        <select id="dState" onchange="fillCities('d')"></select>
+        <select id="dCity" onchange="destChanged()"></select>
+      </div>
+    </div>
+    <div id="tabs">
+      <button id="tabLanes" class="active" onclick="showTab('lanes')">Lanes</button>
+      <button id="tabSettings" onclick="showTab('settings')">Cost Settings</button>
+    </div>
+    <div id="laneList"></div>
+    <div id="settings">
+      <h3>Running cost</h3>
+      <div class="setrow"><span>Fuel price ($/gal)</span><input id="inFuel" type="number" step="0.05" value="3.85"></div>
+      <div class="setrow"><span>Truck MPG</span><input id="inMpg" type="number" step="0.1" value="6.5"></div>
+      <div class="setrow"><span>Driver + ops ($/mile)</span><input id="inRpm" type="number" step="0.01" value="0.85"></div>
+      <h3>Toll adjustment</h3>
+      <div class="setrow"><span>Toll multiplier</span><input id="inTollX" type="number" step="0.05" value="1.00"></div>
+      <div class="note">Routes are chosen by lowest total running cost (miles + tolls), the way a dispatcher would. Toll figures are per-facility 5-axle transponder rates — edit them once in the TOLL FACILITIES table in this file and every lane updates. Settings reset on reload.</div>
+      <button onclick="applySettings()" style="margin-top:12px;width:100%;background:var(--accent);border:none;color:#fff;padding:9px;border-radius:8px;font-size:13.5px;font-weight:600;cursor:pointer">Apply</button>
+    </div>
+    <div id="detail"></div>
+  </div>
+  <div id="map"></div>
+</div>
+
+<script>
+// ================= CITY DATABASE (pickers) =================
+const CITIES = [
+["AL","Birmingham",33.52,-86.80],["AL","Mobile",30.69,-88.04],["AL","Huntsville",34.73,-86.59],
+["AZ","Phoenix",33.45,-112.07],["AZ","Tucson",32.22,-110.97],
+["AR","Little Rock",34.75,-92.29],["AR","Fayetteville",36.06,-94.16],
+["CA","Los Angeles",34.05,-118.24],["CA","San Francisco",37.77,-122.42],["CA","Sacramento",38.58,-121.49],
+["CO","Denver",39.74,-104.99],["CO","Colorado Springs",38.83,-104.82],
+["CT","Hartford",41.76,-72.68],["CT","New Haven",41.31,-72.92],
+["DE","Wilmington",39.75,-75.55],
+["FL","Jacksonville",30.33,-81.66],["FL","Orlando",28.54,-81.38],["FL","Miami",25.76,-80.19],
+["GA","Atlanta",33.75,-84.39],["GA","Savannah",32.08,-81.09],
+["ID","Boise",43.62,-116.21],
+["IL","Chicago",41.8781,-87.6298],["IL","Springfield",39.80,-89.64],["IL","Rockford",42.27,-89.09],
+["IN","Indianapolis",39.77,-86.16],["IN","Fort Wayne",41.08,-85.14],
+["IA","Des Moines",41.59,-93.62],["IA","Cedar Rapids",41.98,-91.67],
+["KS","Wichita",37.69,-97.34],["KS","Kansas City KS",39.11,-94.63],
+["KY","Louisville",38.25,-85.76],["KY","Lexington",38.04,-84.50],
+["LA","New Orleans",29.95,-90.07],["LA","Baton Rouge",30.45,-91.19],["LA","Shreveport",32.53,-93.75],
+["ME","Portland ME",43.66,-70.26],
+["MD","Baltimore",39.29,-76.61],
+["MA","Boston",42.36,-71.06],["MA","Springfield MA",42.10,-72.59],
+["MI","Detroit",42.33,-83.05],["MI","Grand Rapids",42.96,-85.66],
+["MN","Minneapolis",44.98,-93.27],["MN","Duluth",46.79,-92.10],
+["MS","Jackson MS",32.30,-90.18],["MS","Gulfport",30.37,-89.09],
+["MO","St. Louis",38.63,-90.20],["MO","Kansas City",39.10,-94.58],["MO","Springfield MO",37.21,-93.30],
+["MT","Billings",45.78,-108.50],["MT","Missoula",46.87,-113.99],
+["NE","Omaha",41.26,-95.93],["NE","Lincoln",40.81,-96.68],
+["NV","Las Vegas",36.17,-115.14],["NV","Reno",39.53,-119.81],
+["NH","Manchester NH",42.99,-71.45],
+["NJ","Newark",40.74,-74.17],["NJ","Trenton",40.22,-74.76],
+["NM","Albuquerque",35.08,-106.65],["NM","Las Cruces",32.32,-106.76],
+["NY","New York City",40.71,-74.01],["NY","Buffalo",42.89,-78.88],["NY","Albany",42.65,-73.75],
+["NC","Charlotte",35.23,-80.84],["NC","Raleigh",35.78,-78.64],["NC","Greensboro",36.07,-79.79],
+["ND","Fargo",46.88,-96.79],
+["OH","Columbus",39.96,-83.00],["OH","Cleveland",41.50,-81.69],["OH","Cincinnati",39.10,-84.51],
+["OK","Oklahoma City",35.47,-97.52],["OK","Tulsa",36.15,-95.99],
+["OR","Portland OR",45.52,-122.68],["OR","Eugene",44.05,-123.09],
+["PA","Philadelphia",39.95,-75.17],["PA","Pittsburgh",40.44,-80.00],["PA","Harrisburg",40.27,-76.88],
+["RI","Providence",41.82,-71.41],
+["SC","Columbia SC",34.00,-81.03],["SC","Charleston SC",32.78,-79.93],["SC","Greenville SC",34.85,-82.40],
+["SD","Sioux Falls",43.55,-96.70],["SD","Rapid City",44.08,-103.23],
+["TN","Nashville",36.16,-86.78],["TN","Memphis",35.15,-90.05],["TN","Knoxville",35.96,-83.92],
+["TX","Dallas",32.78,-96.80],["TX","Houston",29.76,-95.37],["TX","San Antonio",29.42,-98.49],["TX","El Paso",31.76,-106.49],
+["UT","Salt Lake City",40.76,-111.89],
+["VT","Burlington VT",44.48,-73.21],
+["VA","Richmond",37.54,-77.44],["VA","Norfolk",36.85,-76.29],["VA","Roanoke",37.27,-79.94],
+["WA","Seattle",47.61,-122.33],["WA","Spokane",47.66,-117.43],
+["WV","Charleston WV",38.35,-81.63],
+["WI","Milwaukee",43.04,-87.91],["WI","Madison",43.07,-89.40],["WI","Green Bay",44.51,-88.01],
+["WY","Cheyenne",41.14,-104.82],["WY","Casper",42.87,-106.31]
+];
+// Junction nodes used for routing but not shown in pickers
+const JUNCTIONS = [["OH","Toledo",41.65,-83.54],["TX","Amarillo",35.19,-101.83]];
+const HUBS = ["Los Angeles","Seattle","Denver","Salt Lake City","Phoenix","Dallas","Houston","Oklahoma City",
+"Kansas City","Minneapolis","Chicago","St. Louis","Memphis","New Orleans","Nashville","Atlanta","Miami",
+"Charlotte","Columbus","Detroit","Cleveland","Pittsburgh","Philadelphia","New York City","Boston"];
+
+// ============ TOLL FACILITIES (5-axle transponder, 2026 — EDIT HERE) ============
+// Facility charges are attached to graph edges below. Sources: IL Tollway, Indiana Toll Road,
+// Ohio Turnpike, PA Turnpike, NY Thruway, NJ Tpk, Mass Pike, KS Tpk, WV Tpk, OK Tpks, FL Tpk,
+// MD/DE I-95, GWB — researched July 2026; PA/NJ/MA/KS/WV/FL/MD figures are best-available
+// published rates, worth checking against actual toll bills.
+
+// ============ INTERSTATE CORRIDOR GRAPH: [cityA, cityB, miles, [[facility,$],...]] ============
+const EDGES = [
+// West
+["Seattle","Spokane",280],["Seattle","Portland OR",175],["Portland OR","Eugene",110],
+["Eugene","Sacramento",470],["Portland OR","Boise",430],["Boise","Salt Lake City",340],
+["Spokane","Missoula",200],["Missoula","Billings",340],["Billings","Rapid City",320],
+["Rapid City","Sioux Falls",340],["Rapid City","Cheyenne",250],["Billings","Casper",270],
+["Casper","Cheyenne",180],["Cheyenne","Salt Lake City",440],["Cheyenne","Denver",100],
+["Denver","Colorado Springs",70],["Colorado Springs","Albuquerque",380],
+["Salt Lake City","Las Vegas",420],["Salt Lake City","Reno",520],["Reno","Sacramento",135],
+["Sacramento","San Francisco",90],["Sacramento","Los Angeles",385],["San Francisco","Los Angeles",380],
+["Los Angeles","Las Vegas",270],["Los Angeles","Phoenix",375],["Phoenix","Tucson",115],
+["Tucson","Las Cruces",275],["Tucson","El Paso",315],["Las Cruces","El Paso",45],
+["Albuquerque","Las Cruces",225],["Albuquerque","Phoenix",420],["Albuquerque","Amarillo",290],
+["Albuquerque","Denver",450],
+// Plains
+["Denver","Lincoln",485],["Lincoln","Omaha",60],["Omaha","Des Moines",135],["Omaha","Kansas City",185],
+["Des Moines","Minneapolis",245],["Des Moines","Kansas City",195],["Des Moines","Cedar Rapids",130],
+["Cedar Rapids","Chicago",220,[["IL Tollway Reagan (I-88)",15]]],
+["Cedar Rapids","Chicago",235],  // free alt: I-80 → I-55
+["Denver","Kansas City",600,[["Kansas Tpk (Topeka→KC)",15]]],
+["Denver","Kansas City",610],  // free alt: US-24 around Topeka tpk section
+["Kansas City","Kansas City KS",10],
+["Kansas City KS","Wichita",195,[["Kansas Turnpike (KC→Wichita)",32]]],
+["Kansas City KS","Wichita",215],  // free alt: US-169/US-75
+["Wichita","Oklahoma City",160,[["Kansas Tpk (Wichita→OK line)",10]]],
+["Wichita","Oklahoma City",166],  // free alt: US-81 to free I-35
+["Sioux Falls","Minneapolis",235],["Sioux Falls","Omaha",185],["Fargo","Sioux Falls",245],
+["Fargo","Minneapolis",235],["Duluth","Minneapolis",155],["Duluth","Fargo",250],
+// Upper Midwest
+["Minneapolis","Madison",270],["Madison","Rockford",70],["Madison","Milwaukee",80],
+["Milwaukee","Green Bay",115],
+["Milwaukee","Chicago",92,[["IL Tollway Tri-State",12]]],
+["Rockford","Chicago",90,[["IL Tollway Jane Addams (I-90)",15]]],
+["Rockford","Chicago",96],  // free alt: US-20 / I-290
+["Chicago","Grand Rapids",180],["Grand Rapids","Detroit",160],
+["Chicago","Detroit",282],  // free: I-80/94 Borman → I-94 Michigan
+["Chicago","Detroit",272,[["Chicago Skyway",37],["Indiana Toll Road (to I-94 exit)",25]]],  // toll: skips Borman congestion
+["Chicago","Milwaukee",96],  // free alt: I-94 via local Chicago lanes, no Tri-State
+// Chicago spokes
+["Chicago","Springfield",200],["Springfield","St. Louis",100],["Chicago","Indianapolis",184],
+["Chicago","Memphis",530],["Chicago","Kansas City",510],
+["Chicago","Toledo",230,[["Chicago Skyway",37],["Indiana Toll Road",91],["Ohio Tpk (west)",20]]],
+["Chicago","Fort Wayne",160],["Fort Wayne","Toledo",100],["Fort Wayne","Indianapolis",120],
+["Toledo","Detroit",60],
+["Toledo","Cleveland",110,[["Ohio Tpk (Toledo→Cleveland)",39]]],
+["Toledo","Cleveland",118],  // free alt: US-20 / SR-2
+["Toledo","Columbus",145],
+// Ohio valley
+["Indianapolis","Cincinnati",110],["Indianapolis","Columbus",175],["Indianapolis","Louisville",115],
+["Indianapolis","St. Louis",240],["Cincinnati","Columbus",105],["Cincinnati","Louisville",100],
+["Cincinnati","Lexington",85],["Columbus","Cleveland",140],["Columbus","Pittsburgh",185],
+["Columbus","Charleston WV",165],["Cleveland","Pittsburgh",135],
+["Cleveland","Buffalo",190,[["NY Thruway (Erie section)",15]]],
+["Cleveland","Buffalo",197],  // free alt: SR-5 along the lake in NY
+["Cleveland","Newark",440],  // I-80 across free PA
+["Louisville","Lexington",80],["Louisville","Nashville",175],["Louisville","St. Louis",260],
+["Lexington","Knoxville",170],["Lexington","Charleston WV",175],
+// South
+["St. Louis","Memphis",285],["St. Louis","Springfield MO",215],["St. Louis","Kansas City",250],
+["Springfield MO","Tulsa",180,[["Will Rogers Turnpike",21]]],
+["Springfield MO","Tulsa",190],  // free alt: US-60 / US-412
+["Springfield MO","Fayetteville",110],
+["Tulsa","Oklahoma City",105,[["Turner Turnpike",21]]],
+["Tulsa","Oklahoma City",118],  // free alt: SR-33 / historic US-66 corridor
+["Tulsa","Fayetteville",115],["Oklahoma City","Amarillo",260],["Oklahoma City","Dallas",205],
+["Fayetteville","Little Rock",190],["Little Rock","Memphis",135],["Little Rock","Dallas",320],
+["Little Rock","Shreveport",220],["Shreveport","Houston",240],
+["Memphis","Nashville",210],["Memphis","Jackson MS",210],
+["Nashville","Knoxville",180],["Nashville","Birmingham",190],["Nashville","Huntsville",110],
+["Knoxville","Charlotte",245],["Knoxville","Roanoke",255],
+["Huntsville","Birmingham",100],["Birmingham","Atlanta",145],["Birmingham","Jackson MS",240],
+["Birmingham","Mobile",260],["Jackson MS","New Orleans",190],["Jackson MS","Gulfport",160],
+["Gulfport","New Orleans",80],["Gulfport","Mobile",60],["Mobile","New Orleans",145],
+["New Orleans","Baton Rouge",80],["Baton Rouge","Houston",270],["Baton Rouge","Shreveport",250],
+["Shreveport","Dallas",190],["Dallas","Houston",240],["Dallas","San Antonio",275],
+["Houston","San Antonio",200],["San Antonio","El Paso",550],
+// Southeast
+["Atlanta","Nashville",250],["Atlanta","Greenville SC",145],["Greenville SC","Charlotte",105],
+["Charlotte","Columbia SC",95],["Charlotte","Greensboro",90],["Columbia SC","Charleston SC",115],
+["Charleston SC","Savannah",110],["Savannah","Atlanta",250],["Savannah","Jacksonville",140],
+["Atlanta","Jacksonville",345],["Jacksonville","Orlando",140],
+["Orlando","Miami",235,[["Florida Turnpike (Orlando→Miami)",85]]],
+["Orlando","Miami",250],  // free alt: SR-528 → I-95
+["Jacksonville","Miami",345],
+["Greensboro","Raleigh",80],["Greensboro","Roanoke",105],["Raleigh","Richmond",170],
+["Raleigh","Norfolk",190],["Roanoke","Richmond",190],
+["Roanoke","Charleston WV",170,[["West Virginia Tpk (partial)",17]]],
+["Roanoke","Charleston WV",185],  // free alt: US-60 over the mountain
+["Richmond","Norfolk",95],["Richmond","Baltimore",150],
+// Northeast
+["Baltimore","Harrisburg",80],
+["Baltimore","Wilmington",70,[["MD I-95 (Ft. McHenry/Tydings)",36],["DE I-95 toll",11]]],
+["Baltimore","Wilmington",76],  // free alt: US-40
+["Wilmington","Philadelphia",30],["Philadelphia","Trenton",35],
+["Trenton","Newark",50,[["NJ Turnpike (partial)",25]]],
+["Trenton","Newark",56],  // free alt: US-1 / US-130
+["Newark","New York City",15,[["GWB into NYC (5-axle)",92]]],  // no free truck crossing into NYC exists
+["Philadelphia","Harrisburg",105,[["PA Turnpike (Harrisburg→Philly)",52]]],
+["Philadelphia","Harrisburg",112],  // free alt: US-30 / I-83
+["Harrisburg","Pittsburgh",200,[["PA Turnpike (Pittsburgh→Harrisburg)",95]]],
+["Harrisburg","Pittsburgh",220],  // free alt: US-22 / US-30
+["Pittsburgh","Charleston WV",160],
+["Buffalo","Albany",290,[["NY Thruway (Buffalo→Albany)",75]]],
+["Buffalo","Albany",310],  // free alt: US-20 / I-86 southern tier
+["Albany","New York City",150,[["NY Thruway (Albany→NYC)",37]]],
+["Albany","New York City",165],  // free alt: US-9W / free I-87 sections
+["Albany","Springfield MA",85,[["Mass Pike (west)",18]]],
+["Albany","Springfield MA",92],  // free alt: US-20
+["Springfield MA","Boston",90,[["Mass Pike (east)",18]]],
+["Springfield MA","Boston",98],  // free alt: US-20 / Route 9
+["Springfield MA","Hartford",30],["Albany","Burlington VT",155],
+["Hartford","Providence",75],["Hartford","New Haven",40],["New Haven","New York City",80],
+["Boston","Providence",50],["Boston","Manchester NH",55],["Manchester NH","Portland ME",95]
+];
+// ================= END CONFIG =================
+
+const COLORS=['#4da3ff','#7bd3ff','#3ecf8e','#ffb454','#ff8b5c','#ff6b6b','#b58cff','#6fd6c3'];
+let S = {fuel:3.85, mpg:6.5, rpm:0.85, tollx:1.0};
+const $ = id=>document.getElementById(id);
+const ALLNODES = CITIES.concat(JUNCTIONS);
+const cityByName = n=>ALLNODES.find(c=>c[1]===n);
+const fmt = n=>'$'+n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+
+// ---- graph ----
+const ADJ = {};
+EDGES.forEach(e=>{
+  const [a,b,mi,tolls]=e;
+  (ADJ[a]=ADJ[a]||[]).push({to:b,mi,tolls:tolls||[]});
+  (ADJ[b]=ADJ[b]||[]).push({to:a,mi,tolls:tolls||[]});
+});
+function edgeToll(t){ return t.reduce((s,x)=>s+x[1],0); }
+function runningPerMile(){ return S.fuel/S.mpg + S.rpm; }
+// Dijkstra. Default: minimize generalized cost = miles*runningPerMile + tolls (cheapest, dispatcher logic).
+// minMiles=true: minimize distance only (the "fast" toll-road routing).
+function route(from,to,minMiles){
+  const rpm=runningPerMile();
+  const dist={},prev={},done={};
+  ALLNODES.forEach(c=>dist[c[1]]=Infinity);
+  dist[from]=0;
+  for(;;){
+    let u=null,best=Infinity;
+    for(const k in dist) if(!done[k]&&dist[k]<best){best=dist[k];u=k;}
+    if(u===null||u===to) break;
+    done[u]=1;
+    (ADJ[u]||[]).forEach(e=>{
+      const c=dist[u]+(minMiles ? e.mi : e.mi*rpm+edgeToll(e.tolls)*S.tollx);
+      if(c<dist[e.to]){dist[e.to]=c;prev[e.to]={from:u,edge:e};}
+    });
+  }
+  if(dist[to]===Infinity) return null;
+  const path=[]; let cur=to;
+  while(cur!==from){ const p=prev[cur]; path.unshift({city:cur,edge:p.edge}); cur=p.from; }
+  let miles=0, tolls=[];
+  path.forEach(s=>{ miles+=s.edge.mi; s.edge.tolls.forEach(t=>tolls.push(t)); });
+  const pts=[from].concat(path.map(s=>s.city)).map(n=>{const c=cityByName(n);return [c[2],c[3]];});
+  const mids=path.slice(0,-1).map(s=>s.city);
+  return {miles, tolls, pts, mids};
+}
+
+// ---- ui state ----
+let theme='dark', tileLayer=null, currentLanes=[], selected=null, originName='Chicago';
+const TILES={dark:'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+             light:'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'};
+function toggleTheme(){
+  theme = theme==='dark'?'light':'dark';
+  document.documentElement.setAttribute('data-theme',theme);
+  $('themeBtn').textContent = theme==='dark'?'☀️ Light':'🌙 Dark';
+  if(tileLayer) map.removeLayer(tileLayer);
+  tileLayer=L.tileLayer(TILES[theme],{attribution:'© OpenStreetMap © CARTO',maxZoom:18}).addTo(map);
+}
+const map = L.map('map',{zoomControl:true}).setView([39.6,-95.5],4);
+tileLayer=L.tileLayer(TILES.dark,{attribution:'© OpenStreetMap © CARTO',maxZoom:18}).addTo(map);
+const cityLayer=L.layerGroup().addTo(map);
+const laneLayer=L.layerGroup().addTo(map);
+CITIES.forEach(c=>{
+  const m=L.circleMarker([c[2],c[3]],{radius:3.5,color:'#8899aa',fillColor:'#8899aa',fillOpacity:.8,weight:1});
+  m.bindTooltip(c[1]+', '+c[0]);
+  m.on('click',()=>{ setPicker('d',c); destChanged(); });
+  cityLayer.addLayer(m);
+});
+
+function fillStates(){
+  const states=[...new Set(CITIES.map(c=>c[0]))].sort();
+  ['oState','dState'].forEach(id=>{
+    $(id).innerHTML = (id==='dState'?'<option value="">— any —</option>':'') +
+      states.map(s=>`<option>${s}</option>`).join('');
+  });
+  $('oState').value='IL'; fillCities('o'); $('oCity').value='Chicago';
+  $('dState').value='';
+}
+function fillCities(which){
+  const st=$(which+'State').value;
+  const sel=$(which+'City');
+  const opts=CITIES.filter(c=>c[0]===st).map(c=>`<option>${c[1]}</option>`).join('');
+  sel.innerHTML=(which==='d'?'<option value="">— pick —</option>':'')+opts;
+  if(which==='o') originChanged();
+}
+function setPicker(which,c){ $(which+'State').value=c[0]; fillCities(which); $(which+'City').value=c[1]; }
+
+const viaTxt = r => r.mids.length ? 'via '+r.mids.slice(0,3).join(', ')+(r.mids.length>3?'…':'') : 'direct corridor';
+function makeLane(o,d,i){
+  const r=route(o,d,false); if(!r) return null;
+  const l={id:'l'+i, name:`${o} → ${d}`, to:d, via:viaTxt(r), miles:r.miles, tolls:r.tolls, pts:r.pts,
+          color:COLORS[i%COLORS.length]};
+  // fast/toll-road alternate: shortest-distance routing, shown when it differs
+  const r2=route(o,d,true);
+  if(r2 && JSON.stringify(r2.pts)!==JSON.stringify(r.pts)){
+    l.alt={via:viaTxt(r2), miles:r2.miles, tolls:r2.tolls, pts:r2.pts};
+  }
+  return l;
+}
+function buildLanes(){
+  return HUBS.filter(h=>h!==originName)
+    .map((h,i)=>makeLane(originName,h,i)).filter(Boolean)
+    .sort((a,b)=>a.miles-b.miles);
+}
+function tollTotal(l){ return l.tolls.reduce((s,t)=>s+t[1],0)*S.tollx; }
+const fuelCost=l=>l.miles/S.mpg*S.fuel, runCost=l=>l.miles*S.rpm;
+const totalCost=l=>tollTotal(l)+fuelCost(l)+runCost(l);
+let altLine=null;
+function clearAlt(){ if(altLine){ map.removeLayer(altLine); altLine=null; } }
+
+const layers={};
+function drawLanes(){
+  laneLayer.clearLayers(); for(const k in layers) delete layers[k];
+  const o=cityByName(originName);
+  currentLanes.forEach(l=>{
+    const line=L.polyline(l.pts,{color:l.color,weight:4,opacity:.85});
+    line.on('click',()=>select(l.id,true));
+    line.on('mouseover',e=>e.target.setStyle({weight:7,opacity:1}));
+    line.on('mouseout',e=>{if(selected!==l.id)e.target.setStyle({weight:4,opacity:.85});});
+    laneLayer.addLayer(line);
+    const end=l.pts[l.pts.length-1];
+    const dot=L.circleMarker(end,{radius:5,color:l.color,fillColor:l.color,fillOpacity:1});
+    dot.on('click',()=>select(l.id,true));
+    laneLayer.addLayer(dot);
+    layers[l.id]={line,dot};
+  });
+  laneLayer.addLayer(L.circleMarker([o[2],o[3]],{radius:7,color:'#fff',fillColor:'#4da3ff',fillOpacity:1,weight:2})
+    .bindTooltip(originName.toUpperCase(),{permanent:true,direction:'top',offset:[0,-8],className:'citylabel'}));
+}
+function renderList(){
+  $('laneList').innerHTML = currentLanes.map(l=>{
+    const t=tollTotal(l);
+    return `<div class="lane ${selected===l.id?'selected':''}" onclick="select('${l.id}',true)">
+      <div><div class="name">${l.name}${l.alt?'<span class="badge">⇄ 2 ROUTES</span>':''}</div>
+      <div class="meta">${l.via} • ${l.miles} mi</div></div>
+      <div class="price ${t>0?'toll':'free'}">${t>0?fmt(t):'No tolls'}<div style="font-size:10px;color:var(--muted);font-weight:400">tolls</div></div>
+    </div>`;
+  }).join('');
+}
+function select(id,zoom){
+  selected=id;
+  const l=currentLanes.find(x=>x.id===id); if(!l) return;
+  Object.entries(layers).forEach(([k,v])=>v.line.setStyle({weight:k===id?7:4,opacity:k===id?1:.55}));
+  renderList(); clearAlt();
+  const t=tollTotal(l),f=fuelCost(l),r=runCost(l),tot=totalCost(l);
+  const rows=l.tolls.map(x=>`<tr><td>${x[0]}</td><td>${fmt(x[1]*S.tollx)}</td></tr>`).join('')
+    || `<tr><td>No toll facilities on this routing</td><td style="color:var(--green)">$0.00</td></tr>`;
+  let altHtml='';
+  if(l.alt){
+    const a=l.alt;
+    const at=a.tolls.reduce((s,x)=>s+x[1],0)*S.tollx;
+    const af=a.miles/S.mpg*S.fuel, ar=a.miles*S.rpm, atot=at+af+ar;
+    const cheapWins=tot<=atot;
+    const altRows=a.tolls.map(x=>`<tr><td>${x[0]}</td><td>${fmt(x[1]*S.tollx)}</td></tr>`).join('');
+    altHtml=`
+    <h3 style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:12px 0 6px">⇄ Route comparison</h3>
+    <table class="cmp">
+      <tr><th></th><th>Cheapest (solid)</th><th>Toll route (dashed)</th></tr>
+      <tr><td>Routing</td><td>${l.via}</td><td>${a.via}</td></tr>
+      <tr><td>Miles</td><td>${l.miles}</td><td>${a.miles} (${a.miles-l.miles>0?'+':''}${a.miles-l.miles})</td></tr>
+      <tr><td>Tolls</td><td>${fmt(t)}</td><td>${fmt(at)}</td></tr>
+      <tr><td>Total</td><td class="${cheapWins?'win':''}">${fmt(tot)}</td><td class="${cheapWins?'':'win'}">${fmt(atot)}</td></tr>
+      <tr><td>Difference</td><td colspan="2">${cheapWins?'cheapest route saves '+fmt(atot-tot):'toll route saves '+fmt(tot-atot)} • toll route is ${l.miles-a.miles} mi shorter</td></tr>
+    </table>
+    <details style="font-size:12px;margin-bottom:8px"><summary style="cursor:pointer;color:var(--muted)">Toll route facility breakdown</summary>
+    <table>${altRows||'<tr><td>none</td><td>$0.00</td></tr>'}</table></details>`;
+    altLine=L.polyline(a.pts,{color:l.color,weight:3,opacity:.9,dashArray:'7 7'}).addTo(map);
+    altLine.bindTooltip('Toll route: '+a.miles+' mi • '+fmt(at)+' tolls');
+  }
+  $('detail').style.display='block';
+  $('detail').innerHTML=`
+    <h2>${l.name}${l.alt?' <span class="badge">⇄ 2 ROUTES</span>':''}</h2>
+    <div class="dmeta">${l.via} • ${l.miles} mi (cheapest-total corridor routing)</div>
+    <div class="grid">
+      <div class="tile"><div class="v" style="color:${t>0?'var(--amber)':'var(--green)'}">${fmt(t)}</div><div class="l">Tolls</div></div>
+      <div class="tile"><div class="v">${fmt(f)}</div><div class="l">Fuel est.</div></div>
+      <div class="tile"><div class="v">${fmt(tot)}</div><div class="l">Total est.</div></div>
+    </div>
+    <table>${rows}
+      <tr><td>Fuel (${l.miles} mi ÷ ${S.mpg} mpg × $${S.fuel})</td><td>${fmt(f)}</td></tr>
+      <tr><td>Driver + ops (${l.miles} mi × $${S.rpm})</td><td>${fmt(r)}</td></tr>
+      <tr class="total"><td>Total route cost</td><td>${fmt(tot)}</td></tr>
+    </table>
+    ${altHtml}`;
+  const mid=l.pts[Math.floor(l.pts.length/2)];
+  L.popup().setLatLng(mid).setContent(
+    `<div class="pop-title">${l.name}</div>${l.via} • ${l.miles} mi<br>
+     Tolls: <span class="pop-price ${t>0?'':'free'}">${t>0?fmt(t):'FREE'}</span><br>Total est: <b>${fmt(tot)}</b>${l.alt?'<br><span style="font-size:11px">⇄ toll-route alternate shown dashed</span>':''}`).openOn(map);
+  if(zoom) map.fitBounds(layers[id].line.getBounds(),{padding:[40,40]});
+}
+function originChanged(){
+  originName=$('oCity').value; selected=null; clearAlt();
+  $('dState').value=''; fillCities('d');
+  currentLanes=buildLanes(); drawLanes(); renderList();
+  $('detail').style.display='none';
+}
+function destChanged(){
+  const dName=$('dCity').value; if(!dName||dName===originName) return;
+  const existing=currentLanes.find(l=>l.to===dName&&l.id!=='custom');
+  if(existing){ select(existing.id,true); return; }
+  currentLanes=currentLanes.filter(l=>l.id!=='custom');
+  const c=makeLane(originName,dName,6); if(!c) return;
+  c.id='custom'; c.color='#b58cff';
+  currentLanes.unshift(c); drawLanes(); renderList(); select('custom',true);
+}
+function showTab(t){
+  $('laneList').style.display=t==='lanes'?'block':'none';
+  $('settings').style.display=t==='settings'?'block':'none';
+  $('tabLanes').classList.toggle('active',t==='lanes');
+  $('tabSettings').classList.toggle('active',t==='settings');
+}
+function applySettings(){
+  S.fuel=+$('inFuel').value||S.fuel; S.mpg=+$('inMpg').value||S.mpg;
+  S.rpm=+$('inRpm').value||S.rpm; S.tollx=+$('inTollX').value||1;
+  currentLanes=buildLanes(); drawLanes(); renderList();
+  if(selected&&selected!=='custom') selected=null;
+  showTab('lanes');
+}
+fillStates();
+currentLanes=buildLanes(); drawLanes(); renderList();
+</script>
+</body>
+</html>
